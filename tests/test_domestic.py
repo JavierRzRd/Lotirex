@@ -168,6 +168,39 @@ class DomesticTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT COUNT(*) FROM draws').fetchone()[0], 2)
         self.assertEqual(restore(seed)['inserted'], 0)
 
+    def test_history_bundle_automatically_merges_once_with_original_provenance(self):
+        root = Path(self.directory.name)
+        (root / 'seed').mkdir()
+        record = dict(self.record('2026-03-11', [4,5,6]),
+                      source='uploaded_workbook_unverified', source_url=None)
+        (root / 'seed' / 'domestic-history.json').write_text(json.dumps(
+            {'country':'DO', 'kind':'history', 'results':[record]}))
+        sync.initialize()
+        with db.connect() as c:
+            self.assertEqual(c.execute('SELECT source FROM draws').fetchone()[0], 'uploaded_workbook_unverified')
+        self.assertEqual(len(list((root / 'backups').glob('pre-bundled-history-*.sqlite3'))), 1)
+
+        sync.initialize()
+        with db.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM draws').fetchone()[0], 1)
+        self.assertEqual(len(list((root / 'backups').glob('pre-bundled-history-*.sqlite3'))), 1)
+
+    def test_concurrent_workers_import_history_only_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from backend.import_results import apply_bundle
+        path = Path(self.directory.name) / 'history.json'
+        record = dict(self.record('2026-03-11', [4,5,6]), source='uploaded_workbook_unverified', source_url=None)
+        path.write_text(json.dumps({'country':'DO','kind':'history','results':[record]}))
+        def run(_):
+            with db.connect() as c:
+                return apply_bundle(c, path)
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            results = list(workers.map(run, range(2)))
+        self.assertEqual(sum(r['inserted'] for r in results), 1)
+        with db.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM installed_result_bundles').fetchone()[0], 1)
+        self.assertEqual(len(list((Path(self.directory.name) / 'backups').glob('pre-bundled-history-*.sqlite3'))), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

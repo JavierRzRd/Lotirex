@@ -45,6 +45,7 @@ def initialize():
     from .import_results import apply_bundle
     with db.connect() as connection:
         apply_bundle(connection)
+        apply_bundle(connection, db.ROOT / 'seed' / 'domestic-history.json')
 
 
 

@@ -19,6 +19,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/lotirex-cpanel.zip')
+    parser.add_argument('--hosting-config', type=Path, help='Existing cPanel .htaccess to retain in a hosting-specific ZIP')
+    parser.add_argument('--restart-marker', action='store_true', help='Include tmp/restart.txt to request a Passenger restart on extraction')
     args = parser.parse_args()
     if not args.database.is_file():
         parser.error('Database must exist; no empty snapshot is created')
@@ -36,7 +38,7 @@ def main():
         for path in (ROOT / directory).rglob('*'):
             if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
                 files[path.relative_to(ROOT).as_posix()] = path.read_bytes()
-    for name in ('requirements-cpanel.txt', 'passenger_wsgi.py', 'seed/domestic-results.json'):
+    for name in ('requirements-cpanel.txt', 'passenger_wsgi.py', 'seed/domestic-results.json', 'seed/domestic-history.json'):
         files[name] = (ROOT / name).read_bytes()
     with tempfile.TemporaryDirectory() as directory:
         snapshot = Path(directory) / 'seed.sqlite3'
@@ -50,6 +52,14 @@ def main():
         'updates': '23:00 America/Santo_Domingo, via cPanel cron every 15 minutes; retry pending dates',
         'files': {name: hashlib.sha256(value).hexdigest() for name, value in sorted(files.items())},
     }
+    files['deployment-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2).encode() + b'\n'
+    if args.hosting_config:
+        files['.htaccess'] = args.hosting_config.read_bytes()
+    if args.restart_marker:
+        files['tmp/restart.txt'] = datetime.now(timezone.utc).isoformat().encode() + b'\n'
+    # Hosting-specific files are also covered by the archive manifest.
+    manifest['files'] = {name: hashlib.sha256(value).hexdigest()
+                         for name, value in sorted(files.items()) if name != 'deployment-manifest.json'}
     files['deployment-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2).encode() + b'\n'
     args.output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=args.output.parent, suffix='.zip')

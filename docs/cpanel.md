@@ -312,3 +312,26 @@ The command validates the seed first, creates `backups/pre-history-merge-*.sqlit
 inserts missing Dominican draws, and audits conflicts without replacing accepted
 numbers. Repeating the merge does not duplicate draws. Restart the Python App
 and recheck health, catalog, and the website.
+
+## One extraction for the uploaded cPanel configuration
+
+`lotirex-one-extract.zip` is tailored to the supplied application root
+`/home/pentuic/Lotirex` and Python executable
+`/home/pentuic/virtualenv/Lotirex/3.12/bin/python`. It includes the complete
+compiled frontend, backend fixes, the uploaded `.htaccess` configuration, and a
+fresh `tmp/restart.txt` marker. Extract its contents directly into that app root.
+There is no nested wrapper folder and no live `data/lotirex.sqlite3` to overwrite.
+
+On application startup the complete validated Dominican history bundle merges
+once into the active database after a private backup. Existing accepted numbers
+are preserved and conflicts are audited. No terminal history-restore command is
+needed for this package. First startup can take longer while importing history.
+
+The restart marker asks an existing Passenger application to restart. It cannot
+create CloudLinux/cPanel's Python App registration. If cPanel says
+`No such application (or application not configured) "Lotirex"`, the hosting
+provider must repair that registration or the app must be registered again with
+Python 3.12, root `Lotirex`, startup `passenger_wsgi.py`, callable `application`,
+and the existing domain. Do not delete the application folder or live database.
+The nightly Cron Job is a separate hosting setting; extracting a ZIP cannot
+register it.
