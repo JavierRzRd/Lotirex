@@ -133,6 +133,28 @@ at a nested URL such as `/lotirex`.
 
 ## Install dependencies and start the website
 
+If the homepage responds with `Build the frontend with npm run build`, the
+running backend cannot find `dist/index.html` beside its `backend` directory.
+The deployment ZIP already includes the compiled frontend; this branch does
+not include frontend build source.
+
+Extract `lotirex-frontend.zip` directly into the Python App's application root.
+The required layout is:
+
+```text
+application-root/
+  passenger_wsgi.py
+  backend/app.py
+  dist/index.html
+  dist/assets/index-Cvd8BhtO.css
+  dist/assets/index-DmRm6B0F.js
+```
+
+For the uploaded configuration, that root is `/home/pentuic/Lotirex`. The
+frontend must be `/home/pentuic/Lotirex/dist/index.html`, rather than under
+`public`, `public_html`, or another nested `Lotirex` directory. Restart the
+Python App after extraction so its asset mount is registered.
+
 cPanel displays a command for activating this application's virtual
 environment. Use that exact command in SSH or Terminal, then run:
 
