@@ -41,17 +41,36 @@ def health():
     return {"status": "ok", "draws": count, "scheduler": os.environ.get("LOTIREX_SCHEDULER", "1") == "1"}
 
 
+def source_issue_statuses(connection):
+    """Resolve audit records in Python, including SQLite builds without JSON1."""
+    rows = connection.execute("""SELECT si.*, d.numbers AS accepted_numbers,
+        d.source AS accepted_source FROM source_issues si
+        LEFT JOIN lotteries l ON l.name=si.lottery AND l.country='DO'
+        LEFT JOIN draws d ON d.lottery_id=l.id AND d.date=si.date
+        ORDER BY si.date DESC""")
+    issues = []
+    for row in rows:
+        issue = dict(row)
+        numbers = issue.pop("accepted_numbers")
+        source = issue.pop("accepted_source")
+        issue["payload"] = json.loads(issue["payload"])
+        resolved = source == "website"
+        if resolved and issue["reason"] == "conflicting_draw_for_date":
+            resolved = json.loads(numbers) == issue["payload"].get("numbers")
+        issue["resolved"] = resolved
+        issues.append(issue)
+    return issues
+
+
 @app.get("/api/catalog")
 def catalog():
     with db.connect() as connection:
         rows = list(connection.execute("SELECT * FROM lotteries WHERE country='DO' ORDER BY company,name"))
         summary = dict(connection.execute("SELECT COUNT(*) AS draws,MIN(d.date) AS earliest,MAX(d.date) AS latest FROM draws d JOIN lotteries l ON l.id=d.lottery_id WHERE l.country='DO'").fetchone())
         latest = connection.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1").fetchone()
-        summary["source_issue_audits"] = connection.execute("SELECT COUNT(*) AS total FROM source_issues").fetchone()["total"]
-        summary["source_issues"] = connection.execute("""SELECT COUNT(*) AS total FROM source_issues si
-            WHERE NOT EXISTS(SELECT 1 FROM draws d JOIN lotteries l ON l.id=d.lottery_id
-                WHERE d.date=si.date AND l.name=si.lottery AND d.source='website'
-                AND (si.reason!='conflicting_draw_for_date' OR json(d.numbers)=json_extract(si.payload,'$.numbers')))""").fetchone()["total"]
+        issues = source_issue_statuses(connection)
+        summary["source_issue_audits"] = len(issues)
+        summary["source_issues"] = sum(not issue["resolved"] for issue in issues)
         summary["pending_dates"] = connection.execute("SELECT COUNT(*) AS total FROM sync_days WHERE status!='ok'").fetchone()["total"]
     companies = {}
     for row in rows:
@@ -85,12 +104,7 @@ def catalog():
 def data_quality():
     report = ROOT / "data/import-report.json"
     with db.connect() as connection:
-        issues = [{**dict(row), "resolved": bool(row["resolved"]), "payload": json.loads(row["payload"])}
-                  for row in connection.execute("""SELECT si.*, EXISTS(
-                      SELECT 1 FROM draws d JOIN lotteries l ON l.id=d.lottery_id
-                      WHERE d.date=si.date AND l.name=si.lottery AND d.source='website'
-                AND (si.reason!='conflicting_draw_for_date' OR json(d.numbers)=json_extract(si.payload,'$.numbers'))) AS resolved
-                      FROM source_issues si ORDER BY date DESC""")]
+        issues = source_issue_statuses(connection)
         pending = [dict(row) for row in connection.execute(
             "SELECT * FROM sync_days WHERE status!='ok' ORDER BY date DESC")]
     return {"import": json.loads(report.read_text()) if report.exists() else None,

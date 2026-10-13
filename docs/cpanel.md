@@ -278,3 +278,37 @@ database as a routine deployment step.
 Uploading this package does not configure DNS, create the cPanel application,
 or publish the website automatically. Deployment needs the chosen hostname
 and secure hosting access; the hosting-account checks above must pass first.
+
+## Catalog errors and missing historical draws
+
+The catalog and data-quality routes now use Python to inspect JSON, so they work
+with SQLite builds that lack JSON1 functions. Extract the updated package into
+the existing application root and restart the Python App. If `/api/catalog`
+still fails while `/api/health` works, inspect the latest Python traceback in
+`stderr.log`; an HTTP 500 alone does not confirm the underlying hosting error.
+
+A health count of 3,327 indicates only the small website-results bundle is
+visible; it does not include the full history. Check `LOTIREX_DB` in Python App
+settings against the intended live path, `/home/pentuic/Lotirex/data/lotirex.sqlite3`
+for the uploaded configuration. Do not overwrite or delete any existing DB.
+
+If that intended database is missing historical records, validate the packaged
+seed and inspect the target without changing it:
+
+```bash
+cd /home/pentuic/Lotirex
+/home/pentuic/virtualenv/Lotirex/3.12/bin/python -m backend.restore_history --dry-run
+```
+
+Ensure the reported database path matches Python App's `LOTIREX_DB`. If Python
+App uses a custom path, set the same `LOTIREX_DB` for the terminal and cron too.
+Then merge the missing history with an automatic backup:
+
+```bash
+/home/pentuic/virtualenv/Lotirex/3.12/bin/python -m backend.restore_history
+```
+
+The command validates the seed first, creates `backups/pre-history-merge-*.sqlite3`,
+inserts missing Dominican draws, and audits conflicts without replacing accepted
+numbers. Repeating the merge does not duplicate draws. Restart the Python App
+and recheck health, catalog, and the website.

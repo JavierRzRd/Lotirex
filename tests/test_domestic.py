@@ -124,6 +124,50 @@ class DomesticTests(unittest.TestCase):
         with db.connect() as c:
             self.assertEqual(c.execute('SELECT date FROM draws').fetchone()[0], '2026-03-12')
 
+    def test_catalog_and_data_quality_work_without_sqlite_json_functions(self):
+        import sqlite3
+        from backend.app import catalog, data_quality
+        with db.connect() as c:
+            db.upsert_draw(c, 'Leidsa', 'Quiniela Leidsa', '2026-03-11', [1,2,3], 'website')
+            issue = self.record('2026-03-11', [4,5,6])
+            c.execute('INSERT INTO source_issues(date,lottery,source_url,reason,payload,observed_at) VALUES(?,?,?,?,?,?)',
+                      ('2026-03-11','Quiniela Leidsa',issue['source_url'],'conflicting_draw_for_date',json.dumps(issue),'2026-03-12T00:00:00+00:00'))
+        connection = db.connect()
+        def authorize(action, arg1, arg2, *_):
+            if action == sqlite3.SQLITE_FUNCTION and (arg2 or '').lower().startswith('json'):
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+        connection.set_authorizer(authorize)
+        try:
+            with patch.object(db, 'connect', return_value=connection):
+                result = catalog()
+                self.assertEqual(result['summary']['draws'], 1)
+                self.assertEqual(result['summary']['source_issues'], 1)
+                self.assertFalse(data_quality()['source_issues'][0]['resolved'])
+        finally:
+            connection.close()
+
+    def test_history_merge_backs_up_and_preserves_existing_draws(self):
+        from backend.restore_history import restore
+        seed = Path(self.directory.name) / 'seed.sqlite3'
+        with db.connect(seed) as c:
+            db.initialize(c)
+            for day in ('2026-03-11', '2026-03-12'):
+                db.upsert_draw(c, 'Leidsa', 'Quiniela Leidsa', day, [4,5,6], 'website')
+        with db.connect() as c:
+            db.upsert_draw(c, 'Leidsa', 'Quiniela Leidsa', '2026-03-11', [1,2,3], 'website')
+        dry = restore(seed, True)
+        self.assertEqual(dry['seed_draws'], 2)
+        self.assertIsNone(dry['backup'])
+        result = restore(seed)
+        self.assertEqual(result['inserted'], 1)
+        self.assertEqual(result['conflicts'], 1)
+        self.assertTrue(Path(result['backup']).is_file())
+        with db.connect() as c:
+            self.assertEqual(json.loads(c.execute("SELECT numbers FROM draws WHERE date='2026-03-11'").fetchone()[0]), [1,2,3])
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM draws').fetchone()[0], 2)
+        self.assertEqual(restore(seed)['inserted'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()

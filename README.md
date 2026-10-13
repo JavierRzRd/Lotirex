@@ -2,7 +2,7 @@
 
 Download `lotirex-cpanel.zip` from this branch using GitHub’s **Download raw file** button.
 The package includes the compiled website, Python runtime code, and a SQLite seed with 63,292 Dominican draws across 18 games.
-No PHP or MySQL database is required. Nine regression tests and real Passenger-adapter HTTP checks passed for this release.
+No PHP or MySQL database is required. Eleven regression tests and real Passenger-adapter HTTP checks passed for this release.
 
 Foreign games are rejected and removed from older databases after a private backup.
 The packaged website-results bundle merges into existing installations without
@@ -28,6 +28,6 @@ See [the installation guide](docs/cpanel.md) for Python 3.12 application setting
 Target domain: `lotirex.com`. Extract into the private `lotirex` application directory outside `public_html`.
 The seed initializes an absent database; existing live results are never replaced.
 
-Archive SHA-256: `e3c22b11507dc2c9d0191e6a88211e6066fa2b8a5834b39e5f09a030aea4ba35`
+Archive SHA-256: `0fb949830da75bd3c01462d81616c1d377f2247f9f9cebb194695878d56a86c5`
 
 FTP passwords and other credentials are not included.
