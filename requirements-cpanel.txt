@@ -1,0 +1,12 @@
+# Python 3.12 Passenger runtime. Frontend and SQLite snapshot are prebuilt.
+# The scraper uses the Python standard library; workbook import is not required.
+a2wsgi==1.10.10
+annotated-types==0.8.0
+anyio==4.15.1
+fastapi==0.115.12
+idna==3.20
+pydantic==2.14.0
+pydantic_core==2.50.0
+starlette==0.46.2
+typing-inspection==0.4.4
+typing_extensions==4.16.0

@@ -30,20 +30,68 @@ updater, a VPS or another Python hosting service is needed.
 
 ## Build the upload package
 
-Run this in the development checkout after any frontend changes:
+This branch includes Python source and the already compiled frontend; frontend
+source and an npm build are not present. To rebuild the deployment ZIP after a
+backend change, use Python 3.12 with the runtime dependencies installed:
 
 ```bash
 cd /workspace/Lotirex
-npm run build
-.venv/bin/python scripts/package_cpanel.py
+/workspace/lotirex-runtime/.venv/bin/python scripts/package_cpanel.py --database /workspace/lotirex-runtime/data/lotirex.sqlite3
 ```
 
-The output is `artifacts/lotirex-cpanel.zip`. It contains deployment files and
-a consistent snapshot of the current SQLite database at
-`seed/lotirex.sqlite3`. It excludes local
-virtual environments, `node_modules`, the original spreadsheet, development
-caches and secrets. Keep the archive private: it contains the application's
-database.
+The output is `artifacts/lotirex-cpanel.zip`. The packager retains the compiled
+frontend from the existing root ZIP, overlays the checked-in Python code, and
+creates a consistent SQLite snapshot. It refuses a database containing foreign
+games. The archive contains private database data; do not put it in public_html.
+
+## Dominican-only upgrade and nightly updates
+
+The app accepts Dominican Republic games only. New York, Florida, Mega Millions,
+Powerball, Anguila, and King Lottery are excluded from ingestion and the catalog.
+When an older database contains foreign games, startup first creates a consistent
+private `backups/pre-dominican-only-*.sqlite3` snapshot and then removes those
+games and their draws. Dominican history stays intact. Keep this backup private.
+
+Upload the new ZIP into the same private application root and replace code and
+`dist`, while preserving your live `data` and `backups` directories. Restart the
+Python App so the migration and new code run. Check `/api/catalog`: all games
+must have country `DO`. An existing database is never replaced by the seed. The packaged
+`seed/domestic-results.json` is merged into it once per bundle on startup;
+accepted results stay intact and conflicts are audited. This release includes
+3,327 website results from March 11 through October 13, 2026, including five
+available draws for October 13. Eight dates remain partial or unavailable;
+see `/api/data-quality`. A bundled result is not a claim that every source
+game or date was complete.
+
+Use the Cron Jobs command below every 15 minutes. Python, rather than the server
+clock, controls the first fetch of each date at **23:00 America/Santo_Domingo**
+(UTC-4 all year). Other runs catch up earlier dates and retry incomplete results;
+they do not fetch the current day before 23:00. Cron continues when Passenger is
+idle or restarts, so do not enable the in-process scheduler in the Python App.
+
+A VPS or cloud development environment can instead run a separate supervised
+worker from the application root:
+
+```bash
+python -m backend.nightly
+```
+
+Do not run both the worker and cron for the same database. File locking protects
+against overlap, but one scheduling method is sufficient. The worker is a live
+process and must restart after machine restart; merely uploading it does not
+register a cPanel Cron Job.
+
+Conflicting source numbers are retained in `/api/data-quality` as
+`conflicting_draw_for_date`; the accepted result is preserved and other results
+continue importing. Invalid source numbers are also quarantined. A partial run
+is not proof that every game has published results. Unreachable sources remain
+pending, and TLS verification and robots.txt checks remain enabled.
+
+For a manual inclusive backfill:
+
+```bash
+python -m backend.sync --from 2026-03-11 --to 2026-10-13 --max-days 400
+```
 
 ## Create the Python application
 
